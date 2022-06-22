@@ -17,8 +17,12 @@ contract ERC20Bridge {
         string tknName, 
         string tknSymbol);
 
-    mapping(address => address) public _nativeTokenToWToken;
-    mapping(bytes => bool) public _txProcesed;
+    mapping(address => address) private _nativeTokenToWToken;
+    mapping(bytes => bool) private _txProcesed;
+
+    function getWTokenAddress(address erc20Adress) public view returns(address adr) {
+        adr = _nativeTokenToWToken[erc20Adress];
+    }
 
     function lockNativeToken(address erc20Adress, uint amount, uint targetChainID) public {
         ERC20 token = ERC20(erc20Adress);
@@ -28,16 +32,18 @@ contract ERC20Bridge {
         emit TokenLocked(msg.sender, amount, erc20Adress, token.name(), token.symbol());
     }
 
-    function burnWrappedToken(address erc20Adress, uint amount, uint targetChainID) public {
+    function burnWrappedToken(address werc20Adress, uint amount, uint targetChainID) public {
         //TODO
     }
 
     function claimUnlock(
-        address erc20Adress, 
         uint amount,
+        address erc20Adress,
         bytes memory txHash) public {
         //Check Validator's Signature
-        require(!_txProcesed[txHash], 'This claim is already processed!'); //??
+        require(!_txProcesed[txHash], 'This claim is already processed!');
+
+        _txProcesed[txHash] = true;
 
         ERC20 token = ERC20(erc20Adress);
         token.transfer(msg.sender, amount);
@@ -52,7 +58,9 @@ contract ERC20Bridge {
         string memory tknSymbol, 
         bytes memory txHash) public {
         //Check Validator's Signature
-        require(!_txProcesed[txHash], 'This claim is already processed!'); //??
+        require(!_txProcesed[txHash], 'This claim is already processed!');
+
+        _txProcesed[txHash] = true;
 
         if(_nativeTokenToWToken[erc20OriginalAdress] == address(0)) {
             string memory newName = string(abi.encodePacked('W', tknName));

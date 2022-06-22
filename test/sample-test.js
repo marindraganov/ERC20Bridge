@@ -8,23 +8,74 @@ describe("ERC20Bridge", function () {
     let user1;
 
     before(async () => {
+        [owner, user1] = await ethers.getSigners();
+    });
+
+    beforeEach(async () => {
         let bridgeFactory = await ethers.getContractFactory("ERC20Bridge");
         bridge = await bridgeFactory.deploy();
         let coolERC20Factory = await ethers.getContractFactory("CoolERC20");
         coolERC20 = await coolERC20Factory.deploy();
-        [owner, user1] = await ethers.getSigners();
 
         await bridge.deployed();
         await coolERC20.deployed();
     });
 
     it("Lock token", async function () {
-        const mintTx =  await coolERC20.mint(user1.address, 1000);
-        const approveTx = await coolERC20.connect(user1).approve(bridge.address, 1000);
+        const lockAmount = 1000;
+        const mintTx =  await coolERC20.mint(user1.address, lockAmount);
+        const approveTx = await coolERC20.connect(user1).approve(bridge.address, lockAmount);
 
-        const lockTx = await bridge.connect(user1).lockNativeToken(coolERC20.address, 1000, 2);
+        const lockTx = await bridge.connect(user1).lockNativeToken(coolERC20.address, lockAmount, 2);
         
         expect(await coolERC20.balanceOf(user1.address)).to.equal(0);
-        expect(await coolERC20.balanceOf(bridge.address)).to.equal(1000);
+        expect(await coolERC20.balanceOf(bridge.address)).to.equal(lockAmount);
+    });
+
+    it("Claim Mint", async function () {
+        const lockAmount = 1000;
+        const mintTx =  await coolERC20.mint(user1.address, lockAmount);
+        const approveTx = await coolERC20.connect(user1).approve(bridge.address, lockAmount);
+        const lockTx = await bridge.connect(user1).lockNativeToken(coolERC20.address, lockAmount, 2);
+        
+        await bridge.connect(user1).claimMint(lockAmount, coolERC20.address, coolERC20.name(), coolERC20.symbol(), lockTx.hash);
+
+        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
+        expect(wrappedTokenAddress).to.not.equal(ethers.utils.getAddress('0x0000000000000000000000000000000000000000'));
+
+        const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
+        const userWrappedTokenBalance = await wrappedTokenContract.balanceOf(user1.address);
+        expect(userWrappedTokenBalance).to.equal(lockAmount);
+    });
+
+    it("Claim Mint Fail: Duplicated Tx Hash", async function () {
+        const lockAmount = 1000;
+        const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
+        await bridge.connect(user1).claimMint(lockAmount, coolERC20.address, coolERC20.name(), coolERC20.symbol(), txHash);
+
+        await expect(bridge.connect(user1).claimMint(lockAmount, coolERC20.address, coolERC20.name(), coolERC20.symbol(), txHash))
+            .to.be.revertedWith("This claim is already processed!");
+    });
+
+    it("Claim Unlock", async function () {
+        const unlockAmount = 1000;
+        const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
+        const mintTx =  await coolERC20.mint(bridge.address, unlockAmount);
+
+        await bridge.connect(user1).claimUnlock(unlockAmount, coolERC20.address, txHash);
+
+        const userCoolTokenBalance = await coolERC20.balanceOf(user1.address);
+        expect(userCoolTokenBalance).to.equal(unlockAmount);
+    });
+
+    it("Claim Unlock Fail: Duplicated Tx Hash", async function () {
+        const unlockAmount = 1000;
+        const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
+        const mintTx =  await coolERC20.mint(bridge.address, unlockAmount);
+
+        await bridge.connect(user1).claimUnlock(unlockAmount, coolERC20.address, txHash);
+
+        await expect(bridge.connect(user1).claimUnlock(unlockAmount, coolERC20.address, txHash))
+            .to.be.revertedWith("This claim is already processed!");
     });
 });
