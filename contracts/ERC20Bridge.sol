@@ -2,38 +2,59 @@
 pragma solidity >=0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 import "contracts/WERC20.sol";
 
-contract ERC20Bridge {
+contract ERC20Bridge is Ownable {
 
     event Deploy(address tknAddress, string tknName);
-    event Mint(address indexed user, uint amount, address tknAddress);
+    event Mint(address indexed user, uint amount, address wTknAddress);
     event TokenUnlocked(address indexed user, uint amount, address tknAddress);
+    event TokenBurned(address indexed user, uint amount, address nativeTknAddress);
     event TokenLocked(
         address indexed user, 
         uint amount, 
         address tknAddress, 
         string tknName, 
-        string tknSymbol);
+        string tknSymbol,
+        uint tergetChainID);
 
     mapping(address => address) private _nativeTokenToWToken;
+    mapping(address => address) private _wrappedTokenToNativeToken;
     mapping(bytes => bool) private _txProcesed;
+    mapping(uint => bool) private _supportedChainIDs;
+
+    constructor(uint[] memory supportedChainIDs) {
+        for (uint i = 0; i < supportedChainIDs.length; i++) {
+            _supportedChainIDs[supportedChainIDs[i]] = true;
+        }
+    }
+
+    function setSupportedChain(uint chaindID, bool isSupported) public onlyOwner {
+        _supportedChainIDs[chaindID] = isSupported;
+    }
 
     function getWTokenAddress(address erc20Adress) public view returns(address adr) {
         adr = _nativeTokenToWToken[erc20Adress];
     }
 
     function lockNativeToken(address erc20Adress, uint amount, uint targetChainID) public {
+        require(_supportedChainIDs[targetChainID] == true, "Not supported chain!");
+
         ERC20 token = ERC20(erc20Adress);
 
         token.transferFrom(msg.sender, address(this), amount);
 
-        emit TokenLocked(msg.sender, amount, erc20Adress, token.name(), token.symbol());
+        emit TokenLocked(msg.sender, amount, erc20Adress, token.name(), token.symbol(), targetChainID);
     }
 
-    function burnWrappedToken(address werc20Adress, uint amount, uint targetChainID) public {
-        //TODO
+    function burnWrappedToken(address wERC20Adress, uint amount) public {
+        WERC20 wTokenContract = WERC20(wERC20Adress);
+        wTokenContract.burn(msg.sender, amount);
+        address nativeTknAddress = _wrappedTokenToNativeToken[wERC20Adress];
+
+        emit TokenBurned(msg.sender, amount, nativeTknAddress);
     }
 
     function claimUnlock(
@@ -67,6 +88,7 @@ contract ERC20Bridge {
             string memory newSymbol = string(abi.encodePacked('W', tknSymbol));
             address deployAddr = deployWERC20(newName, newSymbol);
             _nativeTokenToWToken[erc20OriginalAdress] = deployAddr;
+            _wrappedTokenToNativeToken[deployAddr] = erc20OriginalAdress;
         }
 
         address wTknAddress = _nativeTokenToWToken[erc20OriginalAdress];

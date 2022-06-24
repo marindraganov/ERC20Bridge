@@ -9,7 +9,9 @@ contract WERC20 is ERC20, Ownable {
     event Mint(address to, uint amount);
     event Burn(address to, uint amount);
 
-    constructor(string memory tokenName, string memory tokenSymbol) ERC20(tokenName, tokenSymbol) {}
+    constructor(string memory tokenName, string memory tokenSymbol) ERC20(tokenName, tokenSymbol) {
+
+    }
 
     function mint(address to, uint amount) public onlyOwner {
         _mint(to, amount);
