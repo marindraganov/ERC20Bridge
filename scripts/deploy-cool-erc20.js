@@ -9,7 +9,7 @@ async function deployCoolERC20() {
     //console.log('Account balance:', (await deployer.getBalance()).toString()); 
 
     const CoolERC20 = await ethers.getContractFactory('CoolERC20');
-    const coolERC20 = await CoolERC20.deploy('CoolToken', 'COOL');
+    const coolERC20 = await CoolERC20.deploy();
     //console.log('Waiting deployment...');
     await coolERC20.deployed();
 
