@@ -9,7 +9,7 @@ async function deployERC20Bridge() {
     console.log('Account balance:', (await deployer.getBalance()).toString()); // We are printing the account balance
 
     const ERC20Bridge = await ethers.getContractFactory('ERC20Bridge');
-    const bridge = await ERC20Bridge.deploy();
+    const bridge = await ERC20Bridge.deploy([31337,2,3]);
     console.log('Waiting deployment...');
     await bridge.deployed();
 

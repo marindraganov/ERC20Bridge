@@ -39,6 +39,10 @@ contract ERC20Bridge is Ownable {
         adr = _nativeTokenToWToken[erc20Adress];
     }
 
+    function getNativeTokenAddress(address wERC20Adress) public view returns(address adr) {
+        adr = _wrappedTokenToNativeToken[wERC20Adress];
+    }
+
     function lockNativeToken(address erc20Adress, uint amount, uint targetChainID) public {
         require(_supportedChainIDs[targetChainID] == true, "Not supported chain!");
 
@@ -50,6 +54,7 @@ contract ERC20Bridge is Ownable {
     }
 
     function burnWrappedToken(address wERC20Adress, uint amount) public {
+        require(_wrappedTokenToNativeToken[wERC20Adress] != address(0), "Not a wrapped token");
         WERC20 wTokenContract = WERC20(wERC20Adress);
         wTokenContract.burn(msg.sender, amount);
         address nativeTknAddress = _wrappedTokenToNativeToken[wERC20Adress];
