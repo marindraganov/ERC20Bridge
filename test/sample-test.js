@@ -33,6 +33,39 @@ describe("ERC20Bridge", function () {
         expect(await coolERC20.balanceOf(bridge.address)).to.equal(lockAmount);
     });
 
+    it("Lock Token With Permit", async function () {
+        const lockAmount = 1000;
+        const easyERC20Factory = await ethers.getContractFactory("EasyERC20");
+        const easyERC20 = await easyERC20Factory.deploy();
+        await easyERC20.deployed();
+
+        const mintTx =  await easyERC20.mint(user1.address, lockAmount);
+
+        const deadline = ethers.constants.MaxInt256;
+        
+        const { v, r, s } = await getPermitSignature(
+            user1,
+            easyERC20,
+            bridge.address,
+            lockAmount,
+            deadline
+          )
+
+        //   function lockNativeTokenWithPermit(
+        //     address erc20Adress, 
+        //     uint amount, 
+        //     uint targetChainID, 
+        //     uint deadline,
+        //     uint8 v,
+        //     bytes32 r,
+        //     bytes32 s)
+        const lockTx = await bridge.connect(user1)
+           .lockNativeTokenWithPermit(easyERC20.address, lockAmount, supportedChainID, deadline, v, r, s);
+        
+        expect(await easyERC20.balanceOf(user1.address)).to.equal(0);
+        expect(await easyERC20.balanceOf(bridge.address)).to.equal(1000);
+    });
+
     it("Lock Token Fail: Not supproted chain", async function () {
         await bridge.setSupportedChain(supportedChainID, false);
 
@@ -48,6 +81,8 @@ describe("ERC20Bridge", function () {
 
         const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
         expect(wrappedTokenAddress).to.not.equal(ethers.utils.getAddress('0x0000000000000000000000000000000000000000'));
+        const wrappedToNativeMapping = await bridge.getNativeTokenAddress(wrappedTokenAddress);
+        expect(wrappedToNativeMapping).to.equal(coolERC20.address);
 
         const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
         const userWrappedTokenBalance = await wrappedTokenContract.balanceOf(user1.address);
@@ -101,3 +136,59 @@ describe("ERC20Bridge", function () {
             .to.be.revertedWith("This claim is already processed!");
     });
 });
+
+async function getPermitSignature(
+    wallet,
+    token,
+    spender,
+    value,
+    deadline) {
+    const [nonce, name, version, chainId] = await Promise.all([
+      token.nonces(wallet.address),
+      token.name(),
+      '1',
+      wallet.getChainId(),
+    ])
+  
+    return ethers.utils.splitSignature(
+      await wallet._signTypedData(
+        {
+          name,
+          version,
+          chainId,
+          verifyingContract: token.address,
+        },
+        {
+          Permit: [
+            {
+              name: 'owner',
+              type: 'address',
+            },
+            {
+              name: 'spender',
+              type: 'address',
+            },
+            {
+              name: 'value',
+              type: 'uint256',
+            },
+            {
+              name: 'nonce',
+              type: 'uint256',
+            },
+            {
+              name: 'deadline',
+              type: 'uint256',
+            },
+          ],
+        },
+        {
+          owner: wallet.address,
+          spender,
+          value,
+          nonce,
+          deadline,
+        }
+      )
+    )
+  }

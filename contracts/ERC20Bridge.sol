@@ -2,6 +2,7 @@
 pragma solidity >=0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/draft-IERC20Permit.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "hardhat/console.sol";
 import "contracts/WERC20.sol";
@@ -41,6 +42,22 @@ contract ERC20Bridge is Ownable {
 
     function getNativeTokenAddress(address wERC20Adress) public view returns(address adr) {
         adr = _wrappedTokenToNativeToken[wERC20Adress];
+    }
+
+    function lockNativeTokenWithPermit(
+        address erc20Adress, 
+        uint256 amount, 
+        uint targetChainID, 
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s) public {
+
+        IERC20Permit token = IERC20Permit(erc20Adress);
+        
+        token.permit(msg.sender, address(this), amount, deadline, v, r, s);
+
+        lockNativeToken(erc20Adress, amount, targetChainID);
     }
 
     function lockNativeToken(address erc20Adress, uint amount, uint targetChainID) public {
