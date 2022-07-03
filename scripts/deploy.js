@@ -3,13 +3,13 @@ const ethers = hre.ethers;
 
 async function deployERC20Bridge() {
     await hre.run('compile'); // We are compiling the contracts using subtask
-    const [deployer] = await ethers.getSigners(); // We are getting the deployer
+    const [deployer, user, validator] = await ethers.getSigners(); // We are getting the deployer
   
     console.log('Deploying contracts with the account:', deployer.address); // We are printing the address of the deployer
     console.log('Account balance:', (await deployer.getBalance()).toString()); // We are printing the account balance
 
     const ERC20Bridge = await ethers.getContractFactory('ERC20Bridge');
-    const bridge = await ERC20Bridge.deploy([31337,2,3]);
+    const bridge = await ERC20Bridge.deploy([3,4,31337], validator.address);
     console.log('Waiting deployment...');
     await bridge.deployed();
 

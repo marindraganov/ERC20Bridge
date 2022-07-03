@@ -19,17 +19,24 @@ contract ERC20Bridge is Ownable {
         address tknAddress, 
         string tknName, 
         string tknSymbol,
-        uint tergetChainID);
+        uint targetChainID);
 
+    address private _validatorAddress;
     mapping(address => address) private _nativeTokenToWToken;
     mapping(address => address) private _wrappedTokenToNativeToken;
-    mapping(bytes => bool) private _txProcesed;
+    mapping(bytes32 => bool) private _txProcesed;
     mapping(uint => bool) private _supportedChainIDs;
 
-    constructor(uint[] memory supportedChainIDs) {
+    constructor(uint[] memory supportedChainIDs, address validatorAddress) {
         for (uint i = 0; i < supportedChainIDs.length; i++) {
             _supportedChainIDs[supportedChainIDs[i]] = true;
         }
+
+        _validatorAddress = validatorAddress;
+    }
+
+    function setValidatorPublicKey(address validatorAddress) public onlyOwner {
+        _validatorAddress = validatorAddress;
     }
 
     function setSupportedChain(uint chaindID, bool isSupported) public onlyOwner {
@@ -71,7 +78,7 @@ contract ERC20Bridge is Ownable {
     }
 
     function burnWrappedToken(address wERC20Adress, uint amount) public {
-        require(_wrappedTokenToNativeToken[wERC20Adress] != address(0), "Not a wrapped token");
+        require(_wrappedTokenToNativeToken[wERC20Adress] != address(0), "Not a wrapped token!");
         WERC20 wTokenContract = WERC20(wERC20Adress);
         wTokenContract.burn(msg.sender, amount);
         address nativeTknAddress = _wrappedTokenToNativeToken[wERC20Adress];
@@ -82,7 +89,7 @@ contract ERC20Bridge is Ownable {
     function claimUnlock(
         uint amount,
         address erc20Adress,
-        bytes memory txHash) public {
+        bytes32 txHash) public {
         //Check Validator's Signature
         require(!_txProcesed[txHash], 'This claim is already processed!');
 
@@ -99,11 +106,16 @@ contract ERC20Bridge is Ownable {
         address erc20OriginalAdress, 
         string memory tknName, 
         string memory tknSymbol, 
-        bytes memory txHash) public {
-        //Check Validator's Signature
+        bytes32 txHash,
+        uint8 v,
+        bytes32 r,
+        bytes32 s) public {
         require(!_txProcesed[txHash], 'This claim is already processed!');
+         _txProcesed[txHash] = true;
 
-        _txProcesed[txHash] = true;
+        bytes32 claimHash = getMintClaimHash(msg.sender, amount, erc20OriginalAdress, tknName, tknSymbol, txHash);
+        address signer = getSigner(claimHash, v, r, s);
+        require(signer == _validatorAddress, 'Invalid claim signature!');
 
         if(_nativeTokenToWToken[erc20OriginalAdress] == address(0)) {
             string memory newName = string(abi.encodePacked('W', tknName));
@@ -118,6 +130,24 @@ contract ERC20Bridge is Ownable {
         token.mint(msg.sender, amount);
 
         emit Mint(msg.sender, amount, wTknAddress);
+    }
+
+    function getMintClaimHash(
+        address user, 
+        uint amount, 
+        address tknAddress,
+        string memory tknName, 
+        string memory tknSymbol,
+        bytes32 txHash) public pure returns (bytes32) {
+
+        return keccak256(abi.encodePacked("claimMint", user, amount, tknAddress, tknName, tknSymbol, txHash));
+    }
+
+    function getSigner(bytes32 messageHash, uint8 v, bytes32 r, bytes32 s) public pure returns (address) {
+        bytes memory prefix = "\x19Ethereum Signed Message:\n32";
+        bytes32 prefixedHashMessage = keccak256(abi.encodePacked(prefix, messageHash));
+        address signer = ecrecover(prefixedHashMessage, v, r, s);
+        return signer;
     }
 
     function deployWERC20(string memory wTknName, string memory tknSymbol) private returns (address addr){

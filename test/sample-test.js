@@ -7,17 +7,18 @@ describe("ERC20Bridge", function () {
 	let coolERC20;
     let owner;
     let user1;
+    let validator;
 
     before(async () => {
-        [owner, user1] = await ethers.getSigners();
+        [owner, user1, validator] = await ethers.getSigners();
     });
 
     beforeEach(async () => {
         let bridgeFactory = await ethers.getContractFactory("ERC20Bridge");
-        bridge = await bridgeFactory.deploy([supportedChainID]);
+        bridge = await bridgeFactory.deploy([supportedChainID], validator.address);
         let coolERC20Factory = await ethers.getContractFactory("CoolERC20");
         coolERC20 = await coolERC20Factory.deploy();
-
+        console.log(validator.address)
         await bridge.deployed();
         await coolERC20.deployed();
     });
@@ -51,14 +52,6 @@ describe("ERC20Bridge", function () {
             deadline
           )
 
-        //   function lockNativeTokenWithPermit(
-        //     address erc20Adress, 
-        //     uint amount, 
-        //     uint targetChainID, 
-        //     uint deadline,
-        //     uint8 v,
-        //     bytes32 r,
-        //     bytes32 s)
         const lockTx = await bridge.connect(user1)
            .lockNativeTokenWithPermit(easyERC20.address, lockAmount, supportedChainID, deadline, v, r, s);
         
@@ -76,8 +69,8 @@ describe("ERC20Bridge", function () {
     it("Claim Mint", async function () {
         const lockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
-        
-        await bridge.connect(user1).claimMint(lockAmount, coolERC20.address, coolERC20.name(), coolERC20.symbol(), txHash);
+
+        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
 
         const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
         expect(wrappedTokenAddress).to.not.equal(ethers.utils.getAddress('0x0000000000000000000000000000000000000000'));
@@ -89,21 +82,47 @@ describe("ERC20Bridge", function () {
         expect(userWrappedTokenBalance).to.equal(lockAmount);
     });
 
+    it("Claim Mint: Mint token that is already creted", async function () {
+        const lockAmount = 1000;
+        const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
+
+        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
+
+        const txHash2 = ethers.utils.keccak256(ethers.utils.formatBytes32String('Some other text to be hashed'));
+
+        await ClainMint(lockAmount, txHash2, user1, validator, coolERC20, bridge);
+
+        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
+        const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
+        const userWrappedTokenBalance = await wrappedTokenContract.balanceOf(user1.address);
+        expect(userWrappedTokenBalance).to.equal(2 * lockAmount);
+    });
+
     it("Claim Mint Fail: Duplicated Tx Hash", async function () {
         const lockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
 
-        await bridge.connect(user1).claimMint(lockAmount, coolERC20.address, coolERC20.name(), coolERC20.symbol(), txHash);
+        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
 
-        await expect(bridge.connect(user1).claimMint(lockAmount, coolERC20.address, coolERC20.name(), coolERC20.symbol(), txHash))
+        await expect(ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge))
             .to.be.revertedWith("This claim is already processed!");
     });
 
-    it("Burn Wrapped Token", async function () {
+    it("Claim Mint Fail: Invalid Signature", async function () {
         const lockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
 
-        await bridge.connect(user1).claimMint(lockAmount, coolERC20.address, coolERC20.name(), coolERC20.symbol(), txHash);
+        await bridge.setValidatorPublicKey(ethers.utils.getAddress('0x0000000000000000000000000000000000000000'))
+
+        await expect(ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge))
+            .to.be.revertedWith("Invalid claim signature!");
+    });
+
+    it("Burn Wrapped Tokens", async function () {
+        const lockAmount = 1000;
+        const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
+
+        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
 
         const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
         const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
@@ -136,6 +155,17 @@ describe("ERC20Bridge", function () {
             .to.be.revertedWith("This claim is already processed!");
     });
 });
+
+async function ClainMint (amount, txHash, user, signer, token, bridge) {
+    const tknName = await token.name()
+    const tknSymbol = await token.symbol()
+    const claimHash = await bridge.getMintClaimHash(user.address, amount, token.address, tknName, tknSymbol, txHash)
+
+    const sig = await signer.signMessage(ethers.utils.arrayify(claimHash));
+    const sigSplit = await ethers.utils.splitSignature(sig);
+
+    await bridge.connect(user).claimMint(amount, token.address, tknName, tknSymbol, txHash, sigSplit.v, sigSplit.r, sigSplit.s);
+}
 
 async function getPermitSignature(
     wallet,
