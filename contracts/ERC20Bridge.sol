@@ -22,10 +22,11 @@ contract ERC20Bridge is Ownable {
         uint targetChainID);
 
     address private _validatorAddress;
-    mapping(address => address) private _nativeTokenToWToken;
-    mapping(address => address) private _wrappedTokenToNativeToken;
     mapping(bytes32 => bool) private _txProcesed;
     mapping(uint => bool) private _supportedChainIDs;
+    mapping(address => mapping(uint => address)) private _nativeTokenToWToken;
+    mapping(address => address) private _wrappedTokenToNativeToken;
+    mapping(address => uint) private _wrappedTokenToNativeChainId;
 
     constructor(uint[] memory supportedChainIDs, address validatorAddress) {
         for (uint i = 0; i < supportedChainIDs.length; i++) {
@@ -43,12 +44,8 @@ contract ERC20Bridge is Ownable {
         _supportedChainIDs[chaindID] = isSupported;
     }
 
-    function getWTokenAddress(address erc20Adress) public view returns(address adr) {
-        adr = _nativeTokenToWToken[erc20Adress];
-    }
-
-    function getNativeTokenAddress(address wERC20Adress) public view returns(address adr) {
-        adr = _wrappedTokenToNativeToken[wERC20Adress];
+    function getWTokenAddress(address erc20Adress, uint nativeChainId) public view returns(address adr) {
+        adr = _nativeTokenToWToken[erc20Adress][nativeChainId];
     }
 
     function lockNativeTokenWithPermit(
@@ -89,11 +86,16 @@ contract ERC20Bridge is Ownable {
     function claimUnlock(
         uint amount,
         address erc20Adress,
-        bytes32 txHash) public {
-        //Check Validator's Signature
+        bytes32 txHash,
+        uint8 v,
+        bytes32 r,
+        bytes32 s) public {
         require(!_txProcesed[txHash], 'This claim is already processed!');
-
         _txProcesed[txHash] = true;
+
+        bytes32 claimHash = getUnlockClaimHash(msg.sender, amount, erc20Adress, txHash);
+        address signer = getSigner(claimHash, v, r, s);
+        require(signer == _validatorAddress, 'Invalid claim signature!');
 
         ERC20 token = ERC20(erc20Adress);
         token.transfer(msg.sender, amount);
@@ -103,7 +105,8 @@ contract ERC20Bridge is Ownable {
 
     function claimMint(
         uint amount, 
-        address erc20OriginalAdress, 
+        address erc20OriginalAdress,
+        uint nativeChainId,
         string memory tknName, 
         string memory tknSymbol, 
         bytes32 txHash,
@@ -113,19 +116,22 @@ contract ERC20Bridge is Ownable {
         require(!_txProcesed[txHash], 'This claim is already processed!');
          _txProcesed[txHash] = true;
 
-        bytes32 claimHash = getMintClaimHash(msg.sender, amount, erc20OriginalAdress, tknName, tknSymbol, txHash);
+        bytes32 claimHash = getMintClaimHash(msg.sender, amount, erc20OriginalAdress, nativeChainId, tknName, tknSymbol, txHash);
         address signer = getSigner(claimHash, v, r, s);
         require(signer == _validatorAddress, 'Invalid claim signature!');
 
-        if(_nativeTokenToWToken[erc20OriginalAdress] == address(0)) {
+        if(_nativeTokenToWToken[erc20OriginalAdress][nativeChainId] == address(0)) {
             string memory newName = string(abi.encodePacked('W', tknName));
             string memory newSymbol = string(abi.encodePacked('W', tknSymbol));
             address deployAddr = deployWERC20(newName, newSymbol);
-            _nativeTokenToWToken[erc20OriginalAdress] = deployAddr;
+            console.log(deployAddr);
+            _nativeTokenToWToken[erc20OriginalAdress][nativeChainId] = deployAddr;
             _wrappedTokenToNativeToken[deployAddr] = erc20OriginalAdress;
+            _wrappedTokenToNativeChainId[deployAddr] = nativeChainId;
+
         }
 
-        address wTknAddress = _nativeTokenToWToken[erc20OriginalAdress];
+        address wTknAddress = _nativeTokenToWToken[erc20OriginalAdress][nativeChainId];
         WERC20 token = WERC20(wTknAddress);
         token.mint(msg.sender, amount);
 
@@ -134,13 +140,23 @@ contract ERC20Bridge is Ownable {
 
     function getMintClaimHash(
         address user, 
-        uint amount, 
+        uint amount,
         address tknAddress,
+        uint nativeChainId,
         string memory tknName, 
         string memory tknSymbol,
         bytes32 txHash) public pure returns (bytes32) {
 
-        return keccak256(abi.encodePacked("claimMint", user, amount, tknAddress, tknName, tknSymbol, txHash));
+        return keccak256(abi.encodePacked("claimMint", user, amount, tknAddress, nativeChainId, tknName, tknSymbol, txHash));
+    }
+
+    function getUnlockClaimHash(
+        address user, 
+        uint amount, 
+        address nativeTknAddress,
+        bytes32 txHash) public pure returns (bytes32) {
+
+        return keccak256(abi.encodePacked("claimUnlock", user, amount, nativeTknAddress, txHash));
     }
 
     function getSigner(bytes32 messageHash, uint8 v, bytes32 r, bytes32 s) public pure returns (address) {

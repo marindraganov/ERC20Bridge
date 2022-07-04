@@ -8,9 +8,12 @@ describe("ERC20Bridge", function () {
     let owner;
     let user1;
     let validator;
+    let chainId;
 
     before(async () => {
         [owner, user1, validator] = await ethers.getSigners();
+        const network = await ethers.getDefaultProvider().getNetwork();
+        chainId = network.chainId;
     });
 
     beforeEach(async () => {
@@ -18,7 +21,6 @@ describe("ERC20Bridge", function () {
         bridge = await bridgeFactory.deploy([supportedChainID], validator.address);
         let coolERC20Factory = await ethers.getContractFactory("CoolERC20");
         coolERC20 = await coolERC20Factory.deploy();
-        console.log(validator.address)
         await bridge.deployed();
         await coolERC20.deployed();
     });
@@ -70,12 +72,10 @@ describe("ERC20Bridge", function () {
         const lockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
 
-        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
+        await claimMint(lockAmount, txHash, user1, validator, coolERC20, chainId, bridge);
 
-        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
+        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address, chainId);
         expect(wrappedTokenAddress).to.not.equal(ethers.utils.getAddress('0x0000000000000000000000000000000000000000'));
-        const wrappedToNativeMapping = await bridge.getNativeTokenAddress(wrappedTokenAddress);
-        expect(wrappedToNativeMapping).to.equal(coolERC20.address);
 
         const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
         const userWrappedTokenBalance = await wrappedTokenContract.balanceOf(user1.address);
@@ -86,13 +86,13 @@ describe("ERC20Bridge", function () {
         const lockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
 
-        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
+        await claimMint(lockAmount, txHash, user1, validator, coolERC20, chainId, bridge);
 
         const txHash2 = ethers.utils.keccak256(ethers.utils.formatBytes32String('Some other text to be hashed'));
 
-        await ClainMint(lockAmount, txHash2, user1, validator, coolERC20, bridge);
+        await claimMint(lockAmount, txHash2, user1, validator, coolERC20, chainId, bridge);
 
-        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
+        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address, chainId);
         const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
         const userWrappedTokenBalance = await wrappedTokenContract.balanceOf(user1.address);
         expect(userWrappedTokenBalance).to.equal(2 * lockAmount);
@@ -102,9 +102,9 @@ describe("ERC20Bridge", function () {
         const lockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
 
-        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
+        await claimMint(lockAmount, txHash, user1, validator, coolERC20, chainId, bridge);
 
-        await expect(ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge))
+        await expect(claimMint(lockAmount, txHash, user1, validator, coolERC20, chainId, bridge))
             .to.be.revertedWith("This claim is already processed!");
     });
 
@@ -114,7 +114,7 @@ describe("ERC20Bridge", function () {
 
         await bridge.setValidatorPublicKey(ethers.utils.getAddress('0x0000000000000000000000000000000000000000'))
 
-        await expect(ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge))
+        await expect(claimMint(lockAmount, txHash, user1, validator, coolERC20, chainId, bridge))
             .to.be.revertedWith("Invalid claim signature!");
     });
 
@@ -122,9 +122,9 @@ describe("ERC20Bridge", function () {
         const lockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
 
-        await ClainMint(lockAmount, txHash, user1, validator, coolERC20, bridge);
+        await claimMint(lockAmount, txHash, user1, validator, coolERC20, chainId, bridge);
 
-        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address);
+        const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address, chainId);
         const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
         expect(await wrappedTokenContract.balanceOf(user1.address)).to.equal(lockAmount);
 
@@ -133,15 +133,32 @@ describe("ERC20Bridge", function () {
         expect(await wrappedTokenContract.balanceOf(user1.address)).to.equal(lockAmount - burnAmount);
     });
 
+    it("Burn Wrapped Tokens Fail: Not a wrapped token!", async function () {
+        const wrappedTokenAddress = user1.address
+        const burnAmount = 600;
+
+        await expect(bridge.connect(user1).burnWrappedToken(wrappedTokenAddress, burnAmount))
+            .to.be.revertedWith("Not a wrapped token!");
+    });
+
     it("Claim Unlock", async function () {
         const unlockAmount = 1000;
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
         const mintTx =  await coolERC20.mint(bridge.address, unlockAmount);
 
-        await bridge.connect(user1).claimUnlock(unlockAmount, coolERC20.address, txHash);
+        await claimUnlock (unlockAmount, txHash, user1, validator, coolERC20, bridge)
 
         const userCoolTokenBalance = await coolERC20.balanceOf(user1.address);
         expect(userCoolTokenBalance).to.equal(unlockAmount);
+    });
+
+    it("Claim Unlock Fail: Invalid claim signature!", async function () {
+        const unlockAmount = 1000;
+        const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
+        const signer = user1;
+        
+        await expect(claimUnlock (unlockAmount, txHash, user1, signer, coolERC20, bridge))
+            .to.be.revertedWith("Invalid claim signature!");
     });
 
     it("Claim Unlock Fail: Duplicated Tx Hash", async function () {
@@ -149,22 +166,33 @@ describe("ERC20Bridge", function () {
         const txHash = ethers.utils.keccak256(ethers.utils.formatBytes32String('Ramdom text to be hashed'));
         const mintTx =  await coolERC20.mint(bridge.address, unlockAmount);
 
-        await bridge.connect(user1).claimUnlock(unlockAmount, coolERC20.address, txHash);
+        await claimUnlock (unlockAmount, txHash, user1, validator, coolERC20, bridge)
 
-        await expect(bridge.connect(user1).claimUnlock(unlockAmount, coolERC20.address, txHash))
+        await expect(claimUnlock (unlockAmount, txHash, user1, validator, coolERC20, bridge))
             .to.be.revertedWith("This claim is already processed!");
     });
 });
 
-async function ClainMint (amount, txHash, user, signer, token, bridge) {
+async function claimMint (amount, txHash, user, signer, token, nativeChainId, bridge) {
     const tknName = await token.name()
     const tknSymbol = await token.symbol()
-    const claimHash = await bridge.getMintClaimHash(user.address, amount, token.address, tknName, tknSymbol, txHash)
+    const claimHash = await bridge.getMintClaimHash(user.address, amount, token.address, nativeChainId, tknName, tknSymbol, txHash)
 
     const sig = await signer.signMessage(ethers.utils.arrayify(claimHash));
     const sigSplit = await ethers.utils.splitSignature(sig);
 
-    await bridge.connect(user).claimMint(amount, token.address, tknName, tknSymbol, txHash, sigSplit.v, sigSplit.r, sigSplit.s);
+    await bridge.connect(user).claimMint(amount, token.address, nativeChainId, tknName, tknSymbol, txHash, sigSplit.v, sigSplit.r, sigSplit.s);
+}
+
+async function claimUnlock (amount, txHash, user, signer, token, bridge) {
+    const tknName = await token.name()
+    const tknSymbol = await token.symbol()
+    const claimHash = await bridge.getUnlockClaimHash(user.address, amount, token.address, txHash)
+
+    const sig = await signer.signMessage(ethers.utils.arrayify(claimHash));
+    const sigSplit = await ethers.utils.splitSignature(sig);
+
+    await bridge.connect(user).claimUnlock(amount, token.address, txHash, sigSplit.v, sigSplit.r, sigSplit.s);
 }
 
 async function getPermitSignature(
