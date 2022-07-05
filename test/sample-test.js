@@ -77,6 +77,9 @@ describe("ERC20Bridge", function () {
         const wrappedTokenAddress = await bridge.getWTokenAddress(coolERC20.address, chainId);
         expect(wrappedTokenAddress).to.not.equal(ethers.utils.getAddress('0x0000000000000000000000000000000000000000'));
 
+        const hasWrappedToNativeMapping = await bridge.isWrappedToken(wrappedTokenAddress);
+        expect(hasWrappedToNativeMapping).to.equal(true);
+
         const wrappedTokenContract = await ethers.getContractAt('WERC20', wrappedTokenAddress);
         const userWrappedTokenBalance = await wrappedTokenContract.balanceOf(user1.address);
         expect(userWrappedTokenBalance).to.equal(lockAmount);

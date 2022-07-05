@@ -5,9 +5,6 @@ async function deployCoolERC20() {
     await hre.run('compile'); 
     const [deployer] = await ethers.getSigners(); 
   
-    //console.log('Deploying contracts with the account:', deployer.address); 
-    //console.log('Account balance:', (await deployer.getBalance()).toString()); 
-
     const CoolERC20 = await ethers.getContractFactory('CoolERC20');
     const coolERC20 = await CoolERC20.deploy();
     //console.log('Waiting deployment...');

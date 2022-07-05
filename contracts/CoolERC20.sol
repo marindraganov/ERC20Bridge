@@ -8,5 +8,6 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract CoolERC20 is ERC20PresetMinterPauser {
 
     constructor() ERC20PresetMinterPauser("CoolERC20", "COOL") {
+        _mint(msg.sender, 1000 * (10**18));
     }
 }

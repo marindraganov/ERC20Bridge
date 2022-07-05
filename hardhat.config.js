@@ -1,3 +1,4 @@
+require('dotenv').config();
 require("@nomiclabs/hardhat-waffle");
 require("solidity-coverage");
 
@@ -23,6 +24,18 @@ task("deploy-cool-erc20", "Deploys contract on a provided network")
         await coolERC20();
 });
 
+task("deploy-bridge-mainnet", "Deploys contract on a provided network")
+	.setAction(async ({}) => {
+		const deployERC20Bridge = require("./scripts/deploy-bridge-mainnet");
+		await deployERC20Bridge();
+});
+
+task("deploy-coolerc20-mainnet", "Deploys contract on a provided network")
+	.setAction(async ({}) => {
+		const deployCoolERC20 = require("./scripts/deploy-coolerc20-mainnet");
+		await deployCoolERC20();
+});
+
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
 
@@ -30,5 +43,17 @@ task("deploy-cool-erc20", "Deploys contract on a provided network")
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
-  solidity: "0.8.4",
+  solidity:  {
+		version: "0.8.4",
+	},
+  networks: {
+		rinkeby: {
+			url: "https://rinkeby.infura.io/v3/310cd3dfc7aa4145a10b689ee5bfa044",
+			accounts: [process.env.PRIVATE_KEY]
+		},
+    ropsten: {
+			url: "https://ropsten.infura.io/v3/310cd3dfc7aa4145a10b689ee5bfa044",
+			accounts: [process.env.PRIVATE_KEY]
+		}
+	},
 };

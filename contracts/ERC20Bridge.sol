@@ -44,6 +44,10 @@ contract ERC20Bridge is Ownable {
         _supportedChainIDs[chaindID] = isSupported;
     }
 
+    function isWrappedToken(address erc20Adress) public view returns(bool isWrapped) {
+        isWrapped = _wrappedTokenToNativeToken[erc20Adress] != address(0);
+    }
+
     function getWTokenAddress(address erc20Adress, uint nativeChainId) public view returns(address adr) {
         adr = _nativeTokenToWToken[erc20Adress][nativeChainId];
     }
