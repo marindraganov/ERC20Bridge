@@ -12,7 +12,7 @@ contract ERC20Bridge is Ownable {
     event Deploy(address tknAddress, string tknName);
     event Mint(address indexed user, uint amount, address wTknAddress);
     event TokenUnlocked(address indexed user, uint amount, address tknAddress);
-    event TokenBurned(address indexed user, uint amount, address nativeTknAddress);
+    event TokenBurned(address indexed user, uint amount, address nativeTknAddress, uint nativeChainId);
     event TokenLocked(
         address indexed user, 
         uint amount, 
@@ -79,8 +79,9 @@ contract ERC20Bridge is Ownable {
         WERC20 wTokenContract = WERC20(wERC20Adress);
         wTokenContract.burn(msg.sender, amount);
         address nativeTknAddress = _wrappedTokenToNativeToken[wERC20Adress];
+        uint nativeChainId = _wrappedTokenToNativeChainId[wERC20Adress];
 
-        emit TokenBurned(msg.sender, amount, nativeTknAddress);
+        emit TokenBurned(msg.sender, amount, nativeTknAddress, nativeChainId);
     }
 
     function claimUnlock(
