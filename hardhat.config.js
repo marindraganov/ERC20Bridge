@@ -36,6 +36,12 @@ task("deploy-coolerc20-mainnet", "Deploys contract on a provided network")
 		await deployCoolERC20();
 });
 
+task("deploy-easyerc20-mainnet", "Deploys contract on a provided network")
+	.setAction(async ({}) => {
+		const deployEasyERC20 = require("./scripts/deploy-easyerc20-mainnet");
+		await deployEasyERC20();
+});
+
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
 
